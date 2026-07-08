@@ -8,26 +8,47 @@ const FINESTRE = [
   { key: 'ytd', label: 'YTD' },
 ]
 
-function LineChart({ dates, values }) {
+function LineChart({ dates, values, flagEvents }) {
   if (!values.length) return <p>Nessun dato per questa finestra.</p>
 
-  const w = 700, h = 220, pad = 30
+  const w = 700, h = 260, pad = 40
   const min = Math.min(...values), max = Math.max(...values)
   const range = max - min || 1
 
-  const points = values.map((v, i) => {
-    const x = pad + (i / (values.length - 1)) * (w - pad * 2)
-    const y = h - pad - ((v - min) / range) * (h - pad * 2)
-    return `${x},${y}`
-  }).join(' ')
+  function xAt(i) { return pad + (i / (values.length - 1)) * (w - pad * 2) }
+  function yAt(v) { return h - pad - ((v - min) / range) * (h - pad * 2) }
+
+  const points = values.map((v, i) => `${xAt(i)},${yAt(v)}`).join(' ')
+
+  const gridLevels = [0, 0.25, 0.5, 0.75, 1].map(t => min + range * t)
+
+  const markers = (flagEvents || [])
+    .map(f => {
+      const idx = dates.indexOf(f.data_evento)
+      if (idx === -1 || values[idx] == null) return null
+      return { ...f, x: xAt(idx), y: yAt(values[idx]) }
+    })
+    .filter(Boolean)
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto' }}>
+      {gridLevels.map((lvl, i) => (
+        <g key={i}>
+          <line x1={pad} x2={w - pad} y1={yAt(lvl)} y2={yAt(lvl)} stroke="#2a2d35" strokeWidth="1" />
+          <text x={2} y={yAt(lvl) + 4} fill="#888" fontSize="10">{lvl.toFixed(1)}</text>
+        </g>
+      ))}
+
       <polyline points={points} fill="none" stroke="#4f9eff" strokeWidth="2" />
-      <text x={pad} y={h - 8} fill="#888" fontSize="11">{dates[0]}</text>
-      <text x={w - pad - 60} y={h - 8} fill="#888" fontSize="11">{dates[dates.length - 1]}</text>
-      <text x={pad} y={16} fill="#888" fontSize="11">{max.toFixed(1)}</text>
-      <text x={pad} y={h - pad + 4} fill="#888" fontSize="11">{min.toFixed(1)}</text>
+
+      {markers.map((m, i) => (
+        <g key={i}>
+          <circle cx={m.x} cy={m.y} r="4" fill={m.tipo === '3d' ? '#ff6b6b' : m.tipo === '3b' ? '#ffb74d' : '#ffe082'} stroke="#0f1115" strokeWidth="1" />
+        </g>
+      ))}
+
+      <text x={pad} y={h - 6} fill="#888" fontSize="11">{dates[0]}</text>
+      <text x={w - pad - 60} y={h - 6} fill="#888" fontSize="11">{dates[dates.length - 1]}</text>
     </svg>
   )
 }
@@ -73,7 +94,14 @@ export default function Grafici() {
       {data && (
         <>
           <h2 style={{ fontSize: 15, marginBottom: 8 }}>Portafoglio ponderato (base 100)</h2>
-          <LineChart dates={data.portafoglio_ponderato.dates} values={data.portafoglio_ponderato.valori_euro.filter(v => v != null)} />
+          <LineChart
+            dates={data.portafoglio_ponderato.dates}
+            values={data.portafoglio_ponderato.valori_euro}
+            flagEvents={data.flag_eventi}
+          />
+          <p style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+            ● giallo = 3a (lieve) · ● arancio = 3b (moderato) · ● rosso = 3d (severo)
+          </p>
 
           {data.flag_eventi.length > 0 && (
             <section style={{ marginTop: 24 }}>
