@@ -18,10 +18,28 @@ function assignIds(flagEvents) {
   })
 }
 
+function nearestIdxForTime(dates, targetMs) {
+  let best = 0, bestDiff = Infinity
+  dates.forEach((d, i) => {
+    const diff = Math.abs(new Date(d).getTime() - targetMs)
+    if (diff < bestDiff) { bestDiff = diff; best = i }
+  })
+  return best
+}
+
+function layoutLabels(markers, xThreshold = 22) {
+  const sorted = [...markers].sort((a, b) => a.x - b.x)
+  let clusterStart = 0
+  return sorted.map((m, i) => {
+    if (i > 0 && m.x - sorted[i - 1].x > xThreshold) clusterStart = i
+    return { ...m, labelOffset: 10 + (i - clusterStart) * 13 }
+  })
+}
+
 function LineChart({ dates, values, flagEventsWithId }) {
   if (!values.length) return <p>Nessun dato per questa finestra.</p>
 
-  const w = 700, h = 280, pad = 40
+  const w = 700, h = 300, pad = 40
   const min = Math.min(...values), max = Math.max(...values)
   const range = max - min || 1
 
@@ -30,21 +48,24 @@ function LineChart({ dates, values, flagEventsWithId }) {
 
   const points = values.map((v, i) => `${xAt(i)},${yAt(v)}`).join(' ')
   const gridLevels = [0, 0.25, 0.5, 0.75, 1].map(t => min + range * t)
-
   const showBaseline = 100 >= min && 100 <= max
 
   const nTicks = Math.min(5, dates.length)
-  const tickIdxs = Array.from({ length: nTicks }, (_, i) =>
-    Math.round(i * (dates.length - 1) / (nTicks - 1 || 1))
-  )
+  const startMs = new Date(dates[0]).getTime()
+  const endMs = new Date(dates[dates.length - 1]).getTime()
+  const tickIdxs = Array.from({ length: nTicks }, (_, i) => {
+    const targetMs = startMs + (i / (nTicks - 1 || 1)) * (endMs - startMs)
+    return nearestIdxForTime(dates, targetMs)
+  })
 
-  const markers = flagEventsWithId
+  const rawMarkers = flagEventsWithId
     .map(f => {
       const idx = dates.indexOf(f.data_evento)
       if (idx === -1 || values[idx] == null) return null
       return { ...f, x: xAt(idx), y: yAt(values[idx]) }
     })
     .filter(Boolean)
+  const markers = layoutLabels(rawMarkers)
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto' }}>
@@ -73,7 +94,7 @@ function LineChart({ dates, values, flagEventsWithId }) {
       {markers.map((m, i) => (
         <g key={i}>
           <circle cx={m.x} cy={m.y} r="4" fill={TIPO_COLOR[m.tipo] || '#fff'} stroke="#0f1115" strokeWidth="1" />
-          <text x={m.x} y={m.y - 8} fill={TIPO_COLOR[m.tipo] || '#fff'} fontSize="9" textAnchor="middle">
+          <text x={m.x} y={m.y - m.labelOffset} fill={TIPO_COLOR[m.tipo] || '#fff'} fontSize="9" textAnchor="middle">
             {m.id}
           </text>
         </g>
@@ -132,6 +153,9 @@ export default function Grafici() {
             />
             <p style={{ fontSize: 12, color: '#888', marginTop: 8 }}>
               ● giallo = 3a, drawdown lieve (5–10%) · ● arancio = 3b, moderato (10–20%) · ● rosso = 3d, severo (≥20%)
+            </p>
+            <p style={{ fontSize: 12, color: '#666', marginTop: 4 }}>
+              Ogni flag è una sequenza confermata picco→valle: il calo deve recuperare per almeno 2 giorni consecutivi prima di chiudersi come evento.
             </p>
 
             {flagEventsWithId.length > 0 && (
