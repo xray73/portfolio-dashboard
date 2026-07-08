@@ -405,7 +405,7 @@ export default {
         default:
           return Response.json({ error: `Endpoint sconosciuto: ${path}` }, { status: 404, headers });
       }
-    } } catch (err) {
+    }  catch (err) {
       return Response.json({ error: err.message }, { status: 500, headers });
     }
   },
