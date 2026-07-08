@@ -1,8 +1,17 @@
 {
   "name": "portfolio-dashboard",
+  "main": "worker.js",
   "compatibility_date": "2026-07-08",
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
-  }
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "db_invplan",
+      "database_id": "cae42222-2d53-4781-acc3-3f401497a7c9"
+    }
+  ]
 }
