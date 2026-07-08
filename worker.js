@@ -348,6 +348,11 @@ export default {
           return Response.json(payload, { headers });
         }
 
+        case '/api/transazioni': {
+          const payload = await getTransazioni(env);
+          return Response.json(payload, { headers });
+        }
+
         case '/api/chart_data': {
           const finestra = url.searchParams.get('finestra') || '6m';
           const payload = await getChartData(env, finestra);
