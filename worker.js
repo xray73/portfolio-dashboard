@@ -16,6 +16,65 @@ const IRR_TEORICO_PIANO_BASE_10Y = { nominale: 0.0553, reale: 0.0296 };
 const SOGLIA_GIORNI_DATI_INSUFFICIENTI = 90;
 const SOGLIA_GIORNI_NOTA_VOLATILITA = 180;
 
+function getStartDate(finestra) {
+  const oggi = new Date();
+  let start = new Date(oggi);
+  switch (finestra) {
+    case 'week': start.setUTCDate(start.getUTCDate() - 7); break;
+    case 'month': start.setUTCDate(start.getUTCDate() - 30); break;
+    case '3m': start.setUTCMonth(start.getUTCMonth() - 3); break;
+    case 'ytd': start = new Date(Date.UTC(oggi.getUTCFullYear(), 0, 1)); break;
+    case '6m':
+    default: start.setUTCMonth(start.getUTCMonth() - 6); break;
+  }
+  return start.toISOString().slice(0, 10);
+}
+
+async function getChartData(env, finestra) {
+  const startDate = getStartDate(finestra);
+  const tickers = Object.keys(PESI_TARGET);
+
+  const { results } = await env.DB.prepare(
+    `SELECT ticker, data, close FROM t_etf_prezzi WHERE data >= ? ORDER BY ticker, data ASC`
+  ).bind(startDate).all();
+
+  const byTicker = {};
+  for (const t of tickers) byTicker[t] = [];
+  for (const r of results) if (byTicker[r.ticker]) byTicker[r.ticker].push(r);
+
+  const dateSets = tickers.map(t => new Set(byTicker[t].map(r => r.data)));
+  let commonDates = dateSets.length ? new Set(dateSets[0]) : new Set();
+  for (const s of dateSets) commonDates = new Set([...commonDates].filter(d => s.has(d)));
+  const sortedCommon = [...commonDates].sort();
+
+  const priceMaps = {};
+  for (const t of tickers) priceMaps[t] = new Map(byTicker[t].map(r => [r.data, r.close]));
+  const basePrices = {};
+  for (const t of tickers) basePrices[t] = sortedCommon.length ? priceMaps[t].get(sortedCommon[0]) : null;
+
+  const valori_euro = sortedCommon.map(d => {
+    let val = 0, ok = true;
+    for (const t of tickers) {
+      const p = priceMaps[t].get(d), b = basePrices[t];
+      if (p == null || !b) { ok = false; break; }
+      val += (p / b * 100) * PESI_TARGET[t];
+    }
+    return ok ? Math.round(val * 100) / 100 : null;
+  });
+
+  const flagsRes = await env.DB.prepare(
+    `SELECT tipo, ticker, data_evento, valore_pct, provvisorio FROM t_flag_events WHERE data_evento >= ? ORDER BY data_evento ASC`
+  ).bind(startDate).all();
+
+  return {
+    schema_version: 1,
+    finestra,
+    generated_at: new Date().toISOString(),
+    portafoglio_ponderato: { dates: sortedCommon, valori_euro },
+    flag_eventi: flagsRes.results,
+  };
+}
+
 function xnpv(rate, flussi) {
   return flussi.reduce((acc, f) => acc + f.importo / Math.pow(1 + rate, f.giorni_da_data0 / 365), 0);
 }
@@ -265,6 +324,12 @@ export default {
 
         case '/api/performance': {
           const payload = await getPerformanceData(env);
+          return Response.json(payload, { headers });
+        }
+
+        case '/api/chart_data': {
+          const finestra = url.searchParams.get('finestra') || '6m';
+          const payload = await getChartData(env, finestra);
           return Response.json(payload, { headers });
         }
 
