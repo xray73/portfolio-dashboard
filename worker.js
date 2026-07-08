@@ -275,15 +275,21 @@ async function runCronCheck(env) {
     }
   }
 
+  const risultatiInvio = [];
   for (const n of notifiche) {
-    await fetch('https://ntfy.sh/xalert_port_4b0e08d4a589afe4', {
-      method: 'POST',
-      body: n.message,
-      headers: { 'Title': n.title, 'Priority': n.priority },
-    });
+    try {
+      const res = await fetch('https://ntfy.sh/xalert_port_4b0e08d4a589afe4', {
+        method: 'POST',
+        body: n.message,
+        headers: { 'Title': n.title, 'Priority': n.priority },
+      });
+      risultatiInvio.push({ title: n.title, status: res.status, ok: res.ok });
+    } catch (err) {
+      risultatiInvio.push({ title: n.title, errore: err.message });
+    }
   }
 
-  return { eseguito_il: new Date().toISOString(), notifiche_inviate: notifiche.length, dettaglio: notifiche };
+  return { eseguito_il: new Date().toISOString(), notifiche_inviate: notifiche.length, dettaglio: notifiche, risultati_invio: risultatiInvio };
 }
 
 export default {
@@ -411,7 +417,8 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
-    const risultato = await runCronCheck(env);
-    console.log('Cron eseguito:', JSON.stringify(risultato));
+    ctx.waitUntil((async () => {
+      const risultato = await runCronCheck(env);
+      console.log('Cron eseguito:', JSON.stringify(risultato));
+    })());
   },
-};
