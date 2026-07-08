@@ -18,18 +18,18 @@ const labelStyle = { fontSize: 13, color: '#888', marginBottom: 6 }
 
 export default function Home() {
   const [data, setData] = useState(null)
+  const [macro, setMacro] = useState(null)
   const [error, setError] = useState(null)
   const [showIrr, setShowIrr] = useState(false)
   const [irrData, setIrrData] = useState(null)
   const [irrLoading, setIrrLoading] = useState(false)
 
   useEffect(() => {
-    fetch('/api/dashboard')
-      .then(res => {
-        if (!res.ok) throw new Error('Errore caricamento dati')
-        return res.json()
-      })
-      .then(setData)
+    Promise.all([
+      fetch('/api/dashboard').then(r => r.json()),
+      fetch('/api/macro').then(r => r.json()),
+    ])
+      .then(([d, m]) => { setData(d); setMacro(m) })
       .catch(err => setError(err.message))
   }, [])
 
@@ -46,10 +46,12 @@ export default function Home() {
   }
 
   if (error) return <div><h1>Home</h1><p style={{ color: '#ff6b6b' }}>{error}</p></div>
-  if (!data) return <div><h1>Home</h1><p>Caricamento...</p></div>
+  if (!data || !macro) return <div><h1>Home</h1><p>Caricamento...</p></div>
 
   const scenarioLabel = SCENARIO_LABELS[data.scenario_prevalente?.scenario] || data.scenario_prevalente?.scenario
   const ultimiFlag = (data.flag_recenti || []).slice(0, 3)
+  const nomiAlert = macro.parametri.filter(p => p.stato?.includes('ALERT')).map(p => p.nome)
+  const nomiVicino = macro.parametri.filter(p => p.stato?.includes('VICINO')).map(p => p.nome)
 
   return (
     <div>
@@ -67,6 +69,16 @@ export default function Home() {
         <div>
           {data.alert_macro.alert} alert · {data.alert_macro.vicino} in sorveglianza · {data.alert_macro.ok} ok
         </div>
+        {nomiAlert.length > 0 && (
+          <div style={{ color: '#ff6b6b', marginTop: 6, fontSize: 14 }}>
+            Alert: {nomiAlert.join(', ')}
+          </div>
+        )}
+        {nomiVicino.length > 0 && (
+          <div style={{ color: '#ffb74d', marginTop: 4, fontSize: 14 }}>
+            Sorveglianza: {nomiVicino.join(', ')}
+          </div>
+        )}
       </div>
 
       <div style={cardStyle}>
