@@ -7,6 +7,15 @@ const SCENARIO_LABELS = {
   reflaz: 'Reflazionistico',
 }
 
+const cardStyle = {
+  background: '#181b21',
+  border: '1px solid #2a2d35',
+  borderRadius: 10,
+  padding: 16,
+  marginBottom: 16,
+}
+const labelStyle = { fontSize: 13, color: '#888', marginBottom: 6 }
+
 export default function Home() {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
@@ -25,10 +34,7 @@ export default function Home() {
   }, [])
 
   function toggleIrr() {
-    if (showIrr) {
-      setShowIrr(false)
-      return
-    }
+    if (showIrr) { setShowIrr(false); return }
     setShowIrr(true)
     if (!irrData) {
       setIrrLoading(true)
@@ -43,55 +49,60 @@ export default function Home() {
   if (!data) return <div><h1>Home</h1><p>Caricamento...</p></div>
 
   const scenarioLabel = SCENARIO_LABELS[data.scenario_prevalente?.scenario] || data.scenario_prevalente?.scenario
-  const flagPiuRecente = data.flag_recenti?.[0]
+  const ultimiFlag = (data.flag_recenti || []).slice(0, 3)
 
   return (
     <div>
       <h1>Home</h1>
-      <section style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 13, color: '#888' }}>Scenario prevalente</div>
+
+      <div style={cardStyle}>
+        <div style={labelStyle}>Scenario prevalente</div>
         <div style={{ fontSize: 20, fontWeight: 600 }}>
           {scenarioLabel} ({data.scenario_prevalente?.probabilita_pct}%)
         </div>
-      </section>
+      </div>
 
-      <section style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 13, color: '#888' }}>Alert macro</div>
+      <div style={cardStyle}>
+        <div style={labelStyle}>Alert macro</div>
         <div>
           {data.alert_macro.alert} alert · {data.alert_macro.vicino} in sorveglianza · {data.alert_macro.ok} ok
         </div>
-      </section>
+      </div>
 
-      <section style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 13, color: '#888' }}>Capitale</div>
+      <div style={cardStyle}>
+        <div style={labelStyle}>Capitale</div>
         <div>Versato: €{data.capitale.totale_versato.toLocaleString('it-IT')}</div>
         <div>Stimato: €{data.capitale.valore_stimato.toLocaleString('it-IT')}</div>
-        <div style={{ color: data.capitale.gain_loss_eur >= 0 ? '#4caf50' : '#ff6b6b' }}>
+        <div style={{ color: data.capitale.gain_loss_eur >= 0 ? '#4caf50' : '#ff6b6b', marginTop: 4 }}>
           Gain/Loss: €{data.capitale.gain_loss_eur.toLocaleString('it-IT')} ({data.capitale.gain_loss_pct}%)
         </div>
-        <div style={{ fontSize: 13, color: '#888' }}>
+        <div style={{ fontSize: 13, color: '#888', marginTop: 4 }}>
           Gap vs €140.557 (2036): €{data.capitale.gap_vs_140557.toLocaleString('it-IT')}
         </div>
-      </section>
+      </div>
 
-      <section style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 13, color: '#888' }}>Flag più recente</div>
-        {flagPiuRecente ? (
-          <div>
-            {flagPiuRecente.tipo} — {flagPiuRecente.ticker || 'portafoglio'} — {flagPiuRecente.valore_pct}%
-            {' '}({flagPiuRecente.data_evento})
-          </div>
+      <div style={cardStyle}>
+        <div style={labelStyle}>Ultimi flag</div>
+        {ultimiFlag.length ? (
+          ultimiFlag.map((f, i) => (
+            <div key={i} style={{
+              padding: '6px 0',
+              borderBottom: i < ultimiFlag.length - 1 ? '1px solid #2a2d35' : 'none',
+            }}>
+              {f.tipo} — {f.ticker || 'portafoglio'} — {f.valore_pct}% ({f.data_evento})
+            </div>
+          ))
         ) : (
           <div>Nessun flag</div>
         )}
-      </section>
+      </div>
 
       <button onClick={toggleIrr}>
         {showIrr ? 'Nascondi IRR' : 'Mostra IRR reale vs teorico'}
       </button>
 
       {showIrr && (
-        <section style={{ marginTop: 16 }}>
+        <div style={{ ...cardStyle, marginTop: 16 }}>
           {irrLoading && <p>Caricamento...</p>}
           {irrData && irrData.stato === 'dati_insufficienti' && (
             <div>
@@ -106,10 +117,8 @@ export default function Home() {
               <div>Scarto: {(irrData.scarto.nominale * 100).toFixed(2)}%</div>
             </div>
           )}
-          {irrData && irrData.stato === 'errore_calcolo' && (
-            <p>{irrData.nota}</p>
-          )}
-        </section>
+          {irrData && irrData.stato === 'errore_calcolo' && <p>{irrData.nota}</p>}
+        </div>
       )}
     </div>
   )
