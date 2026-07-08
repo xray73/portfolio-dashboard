@@ -78,3 +78,40 @@ export default function Home() {
       <section style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 13, color: '#888' }}>Flag più recente</div>
         {flagPiuRecente ? (
+          <div>
+            {flagPiuRecente.tipo} — {flagPiuRecente.ticker || 'portafoglio'} — {flagPiuRecente.valore_pct}%
+            {' '}({flagPiuRecente.data_evento})
+          </div>
+        ) : (
+          <div>Nessun flag</div>
+        )}
+      </section>
+
+      <button onClick={toggleIrr}>
+        {showIrr ? 'Nascondi IRR' : 'Mostra IRR reale vs teorico'}
+      </button>
+
+      {showIrr && (
+        <section style={{ marginTop: 16 }}>
+          {irrLoading && <p>Caricamento...</p>}
+          {irrData && irrData.stato === 'dati_insufficienti' && (
+            <div>
+              <p>Dati insufficienti per IRR reale.</p>
+              <p>IRR teorico piano: {(irrData.irr_teorico_piano.nominale * 100).toFixed(2)}% nominale</p>
+            </div>
+          )}
+          {irrData && irrData.stato === 'ok' && (
+            <div>
+              <div>IRR reale: {(irrData.irr_reale.nominale * 100).toFixed(2)}% nominale</div>
+              <div>IRR teorico: {(irrData.irr_teorico_piano.nominale * 100).toFixed(2)}% nominale</div>
+              <div>Scarto: {(irrData.scarto.nominale * 100).toFixed(2)}%</div>
+            </div>
+          )}
+          {irrData && irrData.stato === 'errore_calcolo' && (
+            <p>{irrData.nota}</p>
+          )}
+        </section>
+      )}
+    </div>
+  )
+}
