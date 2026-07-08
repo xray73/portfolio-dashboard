@@ -422,3 +422,4 @@ export default {
       console.log('Cron eseguito:', JSON.stringify(risultato));
     })());
   },
+};
