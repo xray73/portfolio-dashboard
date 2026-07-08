@@ -276,17 +276,30 @@ async function runCronCheck(env) {
   }
 
   const risultatiInvio = [];
-  for (const n of notifiche) {
+  async function inviaConRetry(n, tentativo = 1) {
     try {
       const res = await fetch('https://ntfy.sh/xalert_port_4b0e08d4a589afe4', {
         method: 'POST',
         body: n.message,
         headers: { 'Title': n.title, 'Priority': n.priority },
       });
-      risultatiInvio.push({ title: n.title, status: res.status, ok: res.ok });
+      if (res.status === 429 && tentativo < 3) {
+        await new Promise(r => setTimeout(r, tentativo * 5000));
+        return inviaConRetry(n, tentativo + 1);
+      }
+      return { title: n.title, status: res.status, ok: res.ok, tentativi: tentativo };
     } catch (err) {
-      risultatiInvio.push({ title: n.title, errore: err.message });
+      if (tentativo < 3) {
+        await new Promise(r => setTimeout(r, tentativo * 5000));
+        return inviaConRetry(n, tentativo + 1);
+      }
+      return { title: n.title, errore: err.message, tentativi: tentativo };
     }
+  }
+
+  const risultatiInvio = [];
+  for (const n of notifiche) {
+    risultatiInvio.push(await inviaConRetry(n));
   }
 
   return { eseguito_il: new Date().toISOString(), notifiche_inviate: notifiche.length, dettaglio: notifiche, risultati_invio: risultatiInvio };
