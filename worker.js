@@ -32,6 +32,11 @@ function getStartDate(finestra) {
 
 async function getChartData(env, finestra) {
   const startDate = getStartDate(finestra);
+  const pesiRes = await env.DB.prepare(
+    `SELECT ticker, peso FROM v_pesi_target_correnti`
+  ).all();
+  const PESI_TARGET = {};
+  for (const r of pesiRes.results) PESI_TARGET[r.ticker] = r.peso / 100;
   const tickers = Object.keys(PESI_TARGET);
 
   const { results } = await env.DB.prepare(
