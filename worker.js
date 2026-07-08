@@ -277,14 +277,16 @@ async function runCronCheck(env) {
   
   async function inviaConRetry(n, tentativo = 1) {
     try {
-      const res = await fetch('https://ntfy.sh/xalert_port_4b0e08d4a589afe4', {
+      const res = await fetch('https://api.pushover.net/1/messages.json', {
         method: 'POST',
-        body: n.message,
-        headers: {
-          'Title': n.title,
-          'Priority': n.priority,
-          'Authorization': `Bearer ${env.NTFY_TOKEN}`,
-        },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          token: env.PUSHOVER_API_TOKEN,
+          user: env.PUSHOVER_USER_KEY,
+          title: n.title,
+          message: n.message,
+          priority: n.priority === 'high' ? 1 : 0,
+        }),
       });
       if (res.status === 429 && tentativo < 3) {
         await new Promise(r => setTimeout(r, tentativo * 5000));
