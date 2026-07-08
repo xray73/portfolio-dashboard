@@ -274,8 +274,7 @@ async function runCronCheck(env) {
       });
     }
   }
-
-  const risultatiInvio = [];
+  
   async function inviaConRetry(n, tentativo = 1) {
     try {
       const res = await fetch('https://ntfy.sh/xalert_port_4b0e08d4a589afe4', {
