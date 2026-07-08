@@ -48,7 +48,6 @@ export default function Home() {
   return (
     <div>
       <h1>Home</h1>
-
       <section style={{ marginBottom: 20 }}>
         <div style={{ fontSize: 13, color: '#888' }}>Scenario prevalente</div>
         <div style={{ fontSize: 20, fontWeight: 600 }}>
