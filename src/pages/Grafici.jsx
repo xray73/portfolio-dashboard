@@ -8,10 +8,20 @@ const FINESTRE = [
   { key: 'ytd', label: 'YTD' },
 ]
 
-function LineChart({ dates, values, flagEvents }) {
+const TIPO_COLOR = { '3a': '#ffe082', '3b': '#ffb74d', '3d': '#ff6b6b' }
+
+function assignIds(flagEvents) {
+  const counters = {}
+  return flagEvents.map(f => {
+    counters[f.tipo] = (counters[f.tipo] || 0) + 1
+    return { ...f, id: `${f.tipo}.${counters[f.tipo]}` }
+  })
+}
+
+function LineChart({ dates, values, flagEventsWithId }) {
   if (!values.length) return <p>Nessun dato per questa finestra.</p>
 
-  const w = 700, h = 260, pad = 40
+  const w = 700, h = 280, pad = 40
   const min = Math.min(...values), max = Math.max(...values)
   const range = max - min || 1
 
@@ -19,10 +29,16 @@ function LineChart({ dates, values, flagEvents }) {
   function yAt(v) { return h - pad - ((v - min) / range) * (h - pad * 2) }
 
   const points = values.map((v, i) => `${xAt(i)},${yAt(v)}`).join(' ')
-
   const gridLevels = [0, 0.25, 0.5, 0.75, 1].map(t => min + range * t)
 
-  const markers = (flagEvents || [])
+  const showBaseline = 100 >= min && 100 <= max
+
+  const nTicks = Math.min(5, dates.length)
+  const tickIdxs = Array.from({ length: nTicks }, (_, i) =>
+    Math.round(i * (dates.length - 1) / (nTicks - 1 || 1))
+  )
+
+  const markers = flagEventsWithId
     .map(f => {
       const idx = dates.indexOf(f.data_evento)
       if (idx === -1 || values[idx] == null) return null
@@ -39,16 +55,29 @@ function LineChart({ dates, values, flagEvents }) {
         </g>
       ))}
 
+      {tickIdxs.map((idx, i) => (
+        <g key={i}>
+          <line x1={xAt(idx)} x2={xAt(idx)} y1={pad - 10} y2={h - pad} stroke="#1e2128" strokeWidth="1" />
+          <text x={xAt(idx)} y={h - pad + 16} fill="#888" fontSize="9" textAnchor="middle">
+            {dates[idx]?.slice(5)}
+          </text>
+        </g>
+      ))}
+
+      {showBaseline && (
+        <line x1={pad} x2={w - pad} y1={yAt(100)} y2={yAt(100)} stroke="#555" strokeWidth="1" strokeDasharray="4,4" />
+      )}
+
       <polyline points={points} fill="none" stroke="#4f9eff" strokeWidth="2" />
 
       {markers.map((m, i) => (
         <g key={i}>
-          <circle cx={m.x} cy={m.y} r="4" fill={m.tipo === '3d' ? '#ff6b6b' : m.tipo === '3b' ? '#ffb74d' : '#ffe082'} stroke="#0f1115" strokeWidth="1" />
+          <circle cx={m.x} cy={m.y} r="4" fill={TIPO_COLOR[m.tipo] || '#fff'} stroke="#0f1115" strokeWidth="1" />
+          <text x={m.x} y={m.y - 8} fill={TIPO_COLOR[m.tipo] || '#fff'} fontSize="9" textAnchor="middle">
+            {m.id}
+          </text>
         </g>
       ))}
-
-      <text x={pad} y={h - 6} fill="#888" fontSize="11">{dates[0]}</text>
-      <text x={w - pad - 60} y={h - 6} fill="#888" fontSize="11">{dates[dates.length - 1]}</text>
     </svg>
   )
 }
@@ -91,30 +120,34 @@ export default function Grafici() {
       {error && <p style={{ color: '#ff6b6b' }}>{error}</p>}
       {!data && !error && <p>Caricamento...</p>}
 
-      {data && (
-        <>
-          <h2 style={{ fontSize: 15, marginBottom: 8 }}>Portafoglio ponderato (base 100)</h2>
-          <LineChart
-            dates={data.portafoglio_ponderato.dates}
-            values={data.portafoglio_ponderato.valori_euro}
-            flagEvents={data.flag_eventi}
-          />
-          <p style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
-            ● giallo = 3a (lieve) · ● arancio = 3b (moderato) · ● rosso = 3d (severo)
-          </p>
+      {data && (() => {
+        const flagEventsWithId = assignIds(data.flag_eventi)
+        return (
+          <>
+            <h2 style={{ fontSize: 15, marginBottom: 8 }}>Portafoglio ponderato (base 100, linea tratteggiata)</h2>
+            <LineChart
+              dates={data.portafoglio_ponderato.dates}
+              values={data.portafoglio_ponderato.valori_euro}
+              flagEventsWithId={flagEventsWithId}
+            />
+            <p style={{ fontSize: 12, color: '#888', marginTop: 8 }}>
+              ● giallo = 3a, drawdown lieve (5–10%) · ● arancio = 3b, moderato (10–20%) · ● rosso = 3d, severo (≥20%)
+            </p>
 
-          {data.flag_eventi.length > 0 && (
-            <section style={{ marginTop: 24 }}>
-              <h2 style={{ fontSize: 15, marginBottom: 8 }}>Flag eventi</h2>
-              {data.flag_eventi.map((f, i) => (
-                <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #2a2d35', fontSize: 14 }}>
-                  {f.tipo} — {f.ticker || 'portafoglio'} — {f.valore_pct}% ({f.data_evento})
-                </div>
-              ))}
-            </section>
-          )}
-        </>
-      )}
+            {flagEventsWithId.length > 0 && (
+              <section style={{ marginTop: 24 }}>
+                <h2 style={{ fontSize: 15, marginBottom: 8 }}>Flag eventi</h2>
+                {flagEventsWithId.map((f, i) => (
+                  <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #2a2d35', fontSize: 14 }}>
+                    <span style={{ color: TIPO_COLOR[f.tipo], fontWeight: 600 }}>{f.id}</span>
+                    {' — '}{f.ticker || 'portafoglio'} — {f.valore_pct}% ({f.data_evento})
+                  </div>
+                ))}
+              </section>
+            )}
+          </>
+        )
+      })()}
     </div>
   )
 }
