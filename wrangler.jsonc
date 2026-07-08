@@ -16,10 +16,6 @@
   ],
   "triggers": {
     "crons": ["30 18 * * *"]
-  }
-
-"triggers": {
-    "crons": ["30 18 * * *"]
   },
   "observability": {
     "logs": {
@@ -27,5 +23,4 @@
       "invocation_logs": true
     }
   }
-
 }
