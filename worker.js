@@ -30,6 +30,22 @@ function getStartDate(finestra) {
   return start.toISOString().slice(0, 10);
 }
 
+async function getTransazioni(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT
+       tc.batch_id, tc.tipo, tc.data_operazione, tc.commissione_totale,
+       tc.riferimento_correzione, tc.created_at,
+       (SELECT COUNT(*) FROM t_transazioni t WHERE t.batch_id = tc.batch_id) as n_righe,
+       (SELECT COALESCE(SUM(t.controvalore), 0) FROM t_transazioni t WHERE t.batch_id = tc.batch_id) as totale_controvalore,
+       CASE WHEN tc.batch_id IN (
+         SELECT riferimento_correzione FROM t_transazioni_costi WHERE riferimento_correzione IS NOT NULL
+       ) THEN 1 ELSE 0 END as stornato
+     FROM t_transazioni_costi tc
+     ORDER BY tc.data_operazione DESC, tc.created_at DESC`
+  ).all();
+  return { batch: results };
+}
+
 async function getChartData(env, finestra) {
   const startDate = getStartDate(finestra);
   const pesiRes = await env.DB.prepare(
