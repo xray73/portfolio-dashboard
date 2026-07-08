@@ -280,7 +280,11 @@ async function runCronCheck(env) {
       const res = await fetch('https://ntfy.sh/xalert_port_4b0e08d4a589afe4', {
         method: 'POST',
         body: n.message,
-        headers: { 'Title': n.title, 'Priority': n.priority },
+        headers: {
+          'Title': n.title,
+          'Priority': n.priority,
+          'Authorization': `Bearer ${env.NTFY_TOKEN}`,
+        },
       });
       if (res.status === 429 && tentativo < 3) {
         await new Promise(r => setTimeout(r, tentativo * 5000));
