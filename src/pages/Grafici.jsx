@@ -10,6 +10,8 @@ const FINESTRE = [
 
 const TIPO_COLOR = { '3a': '#ffe082', '3b': '#ffb74d', '3d': '#ff6b6b' }
 
+const MESI_IT = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic']
+
 function assignIds(flagEvents) {
   const counters = {}
   return flagEvents.map(f => {
@@ -36,6 +38,35 @@ function layoutLabels(markers, xThreshold = 22) {
   })
 }
 
+function monthTicks(dates) {
+  const seen = new Set()
+  const ticks = []
+  dates.forEach((d, i) => {
+    const ym = d.slice(0, 7)
+    if (!seen.has(ym)) {
+      seen.add(ym)
+      const mIdx = parseInt(d.slice(5, 7), 10) - 1
+      const yy = d.slice(2, 4)
+      ticks.push({ idx: i, label: `${MESI_IT[mIdx]}-${yy}` })
+    }
+  })
+  return ticks
+}
+
+function weekTicks(dates) {
+  const startMs = new Date(dates[0]).getTime()
+  const idxs = []
+  let lastMs = -Infinity
+  dates.forEach((d, i) => {
+    const ms = new Date(d).getTime()
+    if (ms - lastMs >= 7 * 86400000) {
+      idxs.push(i)
+      lastMs = ms
+    }
+  })
+  return idxs
+}
+
 function LineChart({ dates, values, flagEventsWithId }) {
   if (!values.length) return <p>Nessun dato per questa finestra.</p>
 
@@ -50,13 +81,8 @@ function LineChart({ dates, values, flagEventsWithId }) {
   const gridLevels = [0, 0.25, 0.5, 0.75, 1].map(t => min + range * t)
   const showBaseline = 100 >= min && 100 <= max
 
-  const nTicks = Math.min(5, dates.length)
-  const startMs = new Date(dates[0]).getTime()
-  const endMs = new Date(dates[dates.length - 1]).getTime()
-  const tickIdxs = Array.from({ length: nTicks }, (_, i) => {
-    const targetMs = startMs + (i / (nTicks - 1 || 1)) * (endMs - startMs)
-    return nearestIdxForTime(dates, targetMs)
-  })
+  const mTicks = monthTicks(dates)
+  const wTicks = weekTicks(dates)
 
   const rawMarkers = flagEventsWithId
     .map(f => {
@@ -76,11 +102,15 @@ function LineChart({ dates, values, flagEventsWithId }) {
         </g>
       ))}
 
-      {tickIdxs.map((idx, i) => (
+      {wTicks.map((idx, i) => (
+        <line key={i} x1={xAt(idx)} x2={xAt(idx)} y1={h - pad} y2={h - pad + 5} stroke="#555" strokeWidth="1" />
+      ))}
+
+      {mTicks.map((t, i) => (
         <g key={i}>
-          <line x1={xAt(idx)} x2={xAt(idx)} y1={pad - 10} y2={h - pad} stroke="#1e2128" strokeWidth="1" />
-          <text x={xAt(idx)} y={h - pad + 16} fill="#888" fontSize="9" textAnchor="middle">
-            {dates[idx]?.slice(5)}
+          <line x1={xAt(t.idx)} x2={xAt(t.idx)} y1={pad - 10} y2={h - pad} stroke="#1e2128" strokeWidth="1" />
+          <text x={xAt(t.idx)} y={h - pad + 18} fill="#888" fontSize="9" textAnchor="middle">
+            {t.label}
           </text>
         </g>
       ))}
