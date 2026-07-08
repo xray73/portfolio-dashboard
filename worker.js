@@ -243,6 +243,49 @@ async function getPerformanceData(env) {
     prima_transazione, ultima_transazione, metodo_xirr: metodo, nota };
 }
 
+async function runCronCheck(env) {
+  const notifiche = [];
+
+  const macroRes = await env.DB.prepare(
+    `SELECT nome, valore, stato FROM t_macro_params WHERE stato LIKE '%ALERT%'`
+  ).all();
+  if (macroRes.results.length > 0) {
+    const nomi = macroRes.results.map(r => `${r.nome} (${r.valore})`).join(', ');
+    notifiche.push({
+      title: 'Alert Macro',
+      message: `${macroRes.results.length} parametro/i in ALERT: ${nomi}`,
+      priority: 'high',
+    });
+  }
+
+  const oggi = new Date();
+  const giorno = oggi.getUTCDate();
+  if (giorno >= 25) {
+    const meseCorrente = oggi.toISOString().slice(0, 7);
+    const pacRes = await env.DB.prepare(
+      `SELECT COUNT(*) as n FROM t_transazioni_costi
+       WHERE tipo = 'pac' AND strftime('%Y-%m', data_operazione) = ?`
+    ).bind(meseCorrente).first();
+    if (!pacRes || pacRes.n === 0) {
+      notifiche.push({
+        title: 'PAC non registrato',
+        message: `Nessuna transazione PAC registrata per ${meseCorrente} (oggi giorno ${giorno})`,
+        priority: 'default',
+      });
+    }
+  }
+
+  for (const n of notifiche) {
+    await fetch('https://ntfy.sh/xalert_port_4b0e08d4a589afe4', {
+      method: 'POST',
+      body: n.message,
+      headers: { 'Title': n.title, 'Priority': n.priority },
+    });
+  }
+
+  return { eseguito_il: new Date().toISOString(), notifiche_inviate: notifiche.length, dettaglio: notifiche };
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -362,8 +405,13 @@ export default {
         default:
           return Response.json({ error: `Endpoint sconosciuto: ${path}` }, { status: 404, headers });
       }
-    } catch (err) {
+    } } catch (err) {
       return Response.json({ error: err.message }, { status: 500, headers });
     }
-  }
+  },
+
+  async scheduled(event, env, ctx) {
+    const risultato = await runCronCheck(env);
+    console.log('Cron eseguito:', JSON.stringify(risultato));
+  },
 };
