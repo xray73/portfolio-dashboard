@@ -4,6 +4,14 @@
  * Espone endpoint di sola lettura sotto /api/*, stesso D1 (db_invplan)
  * già usato da portfolio-worker-v1. Le scritture (/sync da Apps Script)
  * restano su portfolio-worker-v1, invariato.
+ *
+ * #D006-C3 (Luglio 2026): aggiunta calcolaYtdPonderatoComposito() —
+ * indice di valore composto, pesi da v_pesi_target_correnti, base 1°
+ * gennaio anno corrente, forward-fill — stessa metodologia già usata
+ * in getChartData() qui sotto e in get_chart_data (portfolio-mcp).
+ * Sostituisce in /api/dashboard la media ponderata dei ytd_pct
+ * individuali, che poteva divergere da /api/chart_data per basi/pesi
+ * diversi (vedi SVILUPPO_D006_ELIMINAZIONE_SHEETS.md sezione C).
  */
 
 const LUMP_SUM = 45000;
@@ -107,6 +115,80 @@ async function getChartData(env, finestra) {
     portafoglio_ponderato: { dates: sortedCommon, valori_euro },
     flag_eventi: flagEventiArricchiti,
   };
+}
+
+// ============================================================
+// #D006-C3 — Calcolo YTD ponderato: indice di valore composto,
+// stessa metodologia di getChartData() qui sopra e di
+// get_chart_data (portfolio-mcp). Sostituisce la media ponderata
+// dei ytd_pct individuali usata finora in /api/dashboard. Pesi da
+// v_pesi_target_correnti (dinamici), base 1° gennaio anno corrente,
+// forward-fill. Ritorna null se non ci sono pesi o prezzi
+// disponibili — il chiamante decide il fallback.
+// ============================================================
+async function calcolaYtdPonderatoComposito(env) {
+  const pesiRes = await env.DB.prepare(
+    `SELECT ticker, peso FROM v_pesi_target_correnti`
+  ).all();
+  const pesi = {};
+  for (const r of pesiRes.results) pesi[r.ticker] = Number(r.peso);
+  const tickers = Object.keys(pesi);
+  if (tickers.length === 0) return null;
+
+  const gennaio1 = `${new Date().getUTCFullYear()}-01-01`;
+  const prezziRes = await env.DB.prepare(
+    `SELECT ticker, data, close FROM t_etf_prezzi
+     WHERE data >= ? AND ticker IN (${tickers.map(() => '?').join(',')})
+     ORDER BY ticker, data`
+  ).bind(gennaio1, ...tickers).all();
+
+  const perTicker = {};
+  for (const t of tickers) perTicker[t] = new Map();
+  for (const row of prezziRes.results) {
+    const m = perTicker[row.ticker];
+    if (m && !m.has(row.data)) m.set(row.data, row.close);
+  }
+
+  const dateSet = new Set();
+  for (const t of tickers) for (const d of perTicker[t].keys()) dateSet.add(d);
+  const dates = Array.from(dateSet).sort();
+  if (dates.length === 0) return null;
+
+  const filled = {};
+  for (const t of tickers) {
+    const series = [];
+    let last = null;
+    for (const d of dates) {
+      const v = perTicker[t].get(d);
+      if (v !== undefined) last = v;
+      series.push(last);
+    }
+    filled[t] = series;
+  }
+
+  const normalizzati = {};
+  for (const t of tickers) {
+    const series = filled[t];
+    const baseIdx = series.findIndex((v) => v !== null);
+    const base = baseIdx >= 0 ? series[baseIdx] : null;
+    normalizzati[t] = series.map((v) =>
+      v === null || base === null ? null : (v / base) * 100
+    );
+  }
+
+  const ultimoIdx = dates.length - 1;
+  let sum = 0;
+  let pesoTot = 0;
+  for (const t of tickers) {
+    const v = normalizzati[t][ultimoIdx];
+    if (v !== null) {
+      sum += v * pesi[t];
+      pesoTot += pesi[t];
+    }
+  }
+  if (pesoTot === 0) return null;
+  const indice = sum / pesoTot;
+  return Math.round((indice - 100) * 100) / 100;
 }
 
 function xnpv(rate, flussi) {
@@ -402,7 +484,10 @@ export default {
             mesiPac = Math.max(0, Math.min(mesiPac, MESI_PAC_MAX));
           }
           const totaleVersato = LUMP_SUM + mesiPac * PAC_MENSILE;
-          const ytdPonderato = etf.results.reduce((acc, r) => acc + (r.ytd_pct * r.peso / 100), 0);
+          // #D006-C3 — indice composto, stessa logica di getChartData()
+          // (vedi SVILUPPO_D006_ELIMINAZIONE_SHEETS.md sezione C3).
+          const ytdPonderatoComposito = await calcolaYtdPonderatoComposito(env);
+          const ytdPonderato = ytdPonderatoComposito ?? 0;
           const valoreStimato = totaleVersato * (1 + ytdPonderato / 100);
           const gainLossEur = valoreStimato - totaleVersato;
           const gapVs140557 = CAPITALE_NOMINALE_2036_BASE - valoreStimato;
