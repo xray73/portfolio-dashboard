@@ -101,7 +101,9 @@ export default function Home() {
               padding: '6px 0',
               borderBottom: i < ultimiFlag.length - 1 ? '1px solid #2a2d35' : 'none',
             }}>
-              {f.tipo} — {f.ticker || 'portafoglio'} — {f.valore_pct}% ({f.data_evento})
+              {f.tipo} — {f.ticker || 'portafoglio'} — {f.valore_pct}%
+              {' — '}picco {f.data_evento}{f.trough_date ? ` → valle ${f.trough_date}` : ''}
+              {' — '}<span style={{ color: f.stato === 'in corso' ? '#ffb74d' : '#888' }}>{f.stato}</span>
             </div>
           ))
         ) : (
