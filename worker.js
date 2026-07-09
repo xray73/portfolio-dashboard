@@ -430,7 +430,7 @@ export default {
                 provvisorio: f.provvisorio,
                 stato: f.provvisorio ? 'in corso' : 'terminato',
               };
-            }),,
+            }),
           }, { headers });
         }
 
