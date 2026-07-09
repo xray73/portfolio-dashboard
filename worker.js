@@ -84,15 +84,28 @@ async function getChartData(env, finestra) {
   });
 
   const flagsRes = await env.DB.prepare(
-    `SELECT tipo, ticker, data_evento, valore_pct, provvisorio FROM t_flag_events WHERE data_evento >= ? ORDER BY data_evento ASC`
+    `SELECT tipo, ticker, data_evento, descrizione, valore_pct, provvisorio FROM t_flag_events WHERE data_evento >= ? ORDER BY data_evento ASC`
   ).bind(startDate).all();
+
+  const flagEventiArricchiti = flagsRes.results.map(f => {
+    const match = f.descrizione?.match(/valle (\d{4}-\d{2}-\d{2})/);
+    return {
+      tipo: f.tipo,
+      ticker: f.ticker,
+      data_evento: f.data_evento,
+      trough_date: match ? match[1] : null,
+      valore_pct: f.valore_pct,
+      provvisorio: f.provvisorio,
+      stato: f.provvisorio ? 'in corso' : 'terminato',
+    };
+  });
 
   return {
     schema_version: 1,
     finestra,
     generated_at: new Date().toISOString(),
     portafoglio_ponderato: { dates: sortedCommon, valori_euro },
-    flag_eventi: flagsRes.results,
+    flag_eventi: flagEventiArricchiti,
   };
 }
 
@@ -370,7 +383,7 @@ export default {
             ).all(),
             env.DB.prepare(`SELECT ticker, peso, ytd_pct FROM t_etf_riepilogo`).all(),
             env.DB.prepare(
-              `SELECT tipo, ticker, data_evento, valore_pct, provvisorio
+              `SELECT tipo, ticker, data_evento, descrizione, valore_pct, provvisorio
                FROM t_flag_events ORDER BY data_evento DESC LIMIT 5`
             ).all(),
           ]);
@@ -406,7 +419,18 @@ export default {
               gain_loss_pct: Math.round(ytdPonderato * 100) / 100,
               gap_vs_140557: Math.round(gapVs140557 * 100) / 100,
             },
-            flag_recenti: flags.results,
+            flag_recenti: flags.results.map(f => {
+              const match = f.descrizione?.match(/valle (\d{4}-\d{2}-\d{2})/);
+              return {
+                tipo: f.tipo,
+                ticker: f.ticker,
+                data_evento: f.data_evento,
+                trough_date: match ? match[1] : null,
+                valore_pct: f.valore_pct,
+                provvisorio: f.provvisorio,
+                stato: f.provvisorio ? 'in corso' : 'terminato',
+              };
+            }),,
           }, { headers });
         }
 
