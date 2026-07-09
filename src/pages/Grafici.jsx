@@ -194,7 +194,9 @@ export default function Grafici() {
                 {flagEventsWithId.map((f, i) => (
                   <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid #2a2d35', fontSize: 14 }}>
                     <span style={{ color: TIPO_COLOR[f.tipo], fontWeight: 600 }}>{f.id}</span>
-                    {' — '}{f.ticker || 'portafoglio'} — {f.valore_pct}% ({f.data_evento})
+                    {' — '}{f.ticker || 'portafoglio'} — {f.valore_pct}%
+                    {' — '}picco {f.data_evento}{f.trough_date ? ` → valle ${f.trough_date}` : ''}
+                    {' — '}<span style={{ color: f.stato === 'in corso' ? '#ffb74d' : '#888' }}>{f.stato}</span>
                   </div>
                 ))}
               </section>
