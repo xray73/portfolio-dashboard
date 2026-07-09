@@ -22,10 +22,21 @@ export default function Portfolio() {
 
   const ytdMap = {}
   ytd.etf.forEach(e => { ytdMap[e.ticker] = e })
+  const ytdPortafoglio = ytd.etf.reduce((acc, e) => acc + (e.contributo_ponderato || 0), 0)
 
   return (
     <div>
       <h1>Portfolio</h1>
+
+      <div style={{
+        background: '#181b21', border: '1px solid #2a2d35', borderRadius: 10,
+        padding: 16, marginBottom: 16,
+      }}>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 6 }}>YTD portafoglio (ponderato)</div>
+        <div style={{ fontSize: 22, fontWeight: 600, color: ytdPortafoglio >= 0 ? '#4caf50' : '#ff6b6b' }}>
+          {ytdPortafoglio >= 0 ? '+' : ''}{ytdPortafoglio.toFixed(2)}%
+        </div>
+      </div>
 
       <section>
         {portfolio.portafoglio.map((p, i) => {
