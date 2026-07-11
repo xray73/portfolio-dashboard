@@ -191,6 +191,69 @@ async function calcolaYtdPonderatoComposito(env) {
   return Math.round((indice - 100) * 100) / 100;
 }
 
+// ============================================================
+// Drift allocazione — terza condizione cron (mancante finora).
+// Stessa formula di banda/soglia di get_alert_allocazione in
+// portfolio-mcp — non una nuova regola. db = tabelle isolate
+// (pesi target, transazioni), dbPrezzi = t_etf_riepilogo condiviso
+// (sempre env.DB, anche quando db punta a sandbox).
+// ============================================================
+async function checkDriftAllocazione(db, dbPrezzi) {
+  const SOGLIA_GIORNI_CONVERGENZA = 90;
+
+  const targetRes = await db.prepare(
+    `SELECT ticker, peso, data_inizio FROM v_pesi_target_correnti`
+  ).all();
+
+  const quoteRes = await db.prepare(
+    `SELECT ticker, SUM(quote) AS quote_possedute
+     FROM v_transazioni_attive
+     GROUP BY ticker`
+  ).all();
+  const quoteMap = {};
+  for (const r of quoteRes.results) quoteMap[r.ticker] = Number(r.quote_possedute) || 0;
+
+  const prezziRes = await dbPrezzi.prepare(
+    `SELECT ticker, prezzo_attuale FROM t_etf_riepilogo WHERE peso > 0`
+  ).all();
+  const prezzoMap = {};
+  for (const r of prezziRes.results) prezzoMap[r.ticker] = Number(r.prezzo_attuale) || 0;
+
+  const controvaloreMap = {};
+  let totalePortafoglio = 0;
+  for (const t of Object.keys(quoteMap)) {
+    const cv = (quoteMap[t] || 0) * (prezzoMap[t] || 0);
+    controvaloreMap[t] = cv;
+    totalePortafoglio += cv;
+  }
+  if (totalePortafoglio === 0) return []; // nessuna posizione, nulla da segnalare
+
+  const oggi = new Date();
+  const driftOrganico = [];
+  for (const row of targetRes.results) {
+    const ticker = row.ticker;
+    const pesoTarget = Number(row.peso);
+    const banda = Math.max(pesoTarget * 0.15, 0.015);
+    const rangeMin = pesoTarget - banda;
+    const rangeMax = pesoTarget + banda;
+    const pesoReale = (controvaloreMap[ticker] || 0) / totalePortafoglio;
+    const fuoriBanda = pesoReale < rangeMin || pesoReale > rangeMax;
+    if (!fuoriBanda) continue;
+
+    const dataInizio = new Date(row.data_inizio + 'T00:00:00Z');
+    const giorniDaTarget = Math.floor((oggi - dataInizio) / 86400000);
+    if (giorniDaTarget >= SOGLIA_GIORNI_CONVERGENZA) {
+      driftOrganico.push({
+        ticker,
+        peso_target: pesoTarget,
+        peso_reale: Math.round(pesoReale * 10000) / 10000,
+        giorni_da_ultimo_target: giorniDaTarget,
+      });
+    }
+  }
+  return driftOrganico;
+}
+
 function xnpv(rate, flussi) {
   return flussi.reduce((acc, f) => acc + f.importo / Math.pow(1 + rate, f.giorni_da_data0 / 365), 0);
 }
@@ -338,9 +401,10 @@ async function getPerformanceData(env) {
     prima_transazione, ultima_transazione, metodo_xirr: metodo, nota };
 }
 
-async function runCronCheck(env) {
+async function buildNotifiche(env, db) {
   const notifiche = [];
 
+  // Alert macro — SEMPRE prod (dato condiviso, mai isolato in sandbox)
   const macroRes = await env.DB.prepare(
     `SELECT nome, valore, stato FROM t_macro_params WHERE stato LIKE '%ALERT%'`
   ).all();
@@ -353,11 +417,12 @@ async function runCronCheck(env) {
     });
   }
 
+  // PAC mancato — sul db selezionato (prod nel cron reale, sandbox nei test)
   const oggi = new Date();
   const giorno = oggi.getUTCDate();
   if (giorno >= 25) {
     const meseCorrente = oggi.toISOString().slice(0, 7);
-    const pacRes = await env.DB.prepare(
+    const pacRes = await db.prepare(
       `SELECT COUNT(*) as n FROM t_transazioni_costi
        WHERE tipo = 'pac' AND strftime('%Y-%m', data_operazione) = ?`
     ).bind(meseCorrente).first();
@@ -369,7 +434,24 @@ async function runCronCheck(env) {
       });
     }
   }
-  
+
+  // Drift allocazione — sul db selezionato, prezzi sempre condivisi (env.DB)
+  const drift = await checkDriftAllocazione(db, env.DB);
+  if (drift.length > 0) {
+    const dettaglio = drift
+      .map(d => `${d.ticker} (target ${(d.peso_target * 100).toFixed(0)}%, reale ${(d.peso_reale * 100).toFixed(1)}%, ${d.giorni_da_ultimo_target}gg)`)
+      .join(', ');
+    notifiche.push({
+      title: 'Drift Allocazione',
+      message: `${drift.length} ETF fuori banda da ≥90gg: ${dettaglio}`,
+      priority: 'default',
+    });
+  }
+
+  return notifiche;
+}
+
+async function inviaNotifiche(env, notifiche, prefix = null) {
   async function inviaConRetry(n, tentativo = 1) {
     try {
       const res = await fetch('https://api.pushover.net/1/messages.json', {
@@ -378,7 +460,7 @@ async function runCronCheck(env) {
         body: new URLSearchParams({
           token: env.PUSHOVER_API_TOKEN,
           user: env.PUSHOVER_USER_KEY,
-          title: n.title,
+          title: prefix ? `${prefix} ${n.title}` : n.title,
           message: n.message,
           priority: n.priority === 'high' ? 1 : 0,
         }),
@@ -397,12 +479,22 @@ async function runCronCheck(env) {
     }
   }
 
-  const risultatiInvio = [];
+  const risultati = [];
   for (const n of notifiche) {
-    risultatiInvio.push(await inviaConRetry(n));
+    risultati.push(await inviaConRetry(n));
   }
+  return risultati;
+}
 
-  return { eseguito_il: new Date().toISOString(), notifiche_inviate: notifiche.length, dettaglio: notifiche, risultati_invio: risultatiInvio };
+async function runCronCheck(env) {
+  const notifiche = await buildNotifiche(env, env.DB);
+  const risultati_invio = await inviaNotifiche(env, notifiche);
+  return {
+    eseguito_il: new Date().toISOString(),
+    notifiche_inviate: notifiche.length,
+    dettaglio: notifiche,
+    risultati_invio,
+  };
 }
 
 export default {
@@ -533,6 +625,28 @@ export default {
           const finestra = url.searchParams.get('finestra') || '6m';
           const payload = await getChartData(env, finestra);
           return Response.json(payload, { headers });
+        }
+
+        case '/api/cron-test': {
+          const ambiente = url.searchParams.get('ambiente') === 'sandbox' ? 'sandbox' : 'prod';
+          const dryRun = url.searchParams.get('dry_run') !== 'false'; // default true
+          const db = ambiente === 'sandbox' ? env.DB_SANDBOX : env.DB;
+
+          const notifiche = await buildNotifiche(env, db);
+
+          let risultati_invio = null;
+          if (!dryRun) {
+            const prefix = ambiente === 'sandbox' ? '🧪 SANDBOX TEST' : 'TEST MANUALE';
+            risultati_invio = await inviaNotifiche(env, notifiche, prefix);
+          }
+
+          return Response.json({
+            ambiente,
+            dry_run: dryRun,
+            notifiche_che_sarebbero_inviate: notifiche.length,
+            dettaglio: notifiche,
+            risultati_invio,
+          }, { headers });
         }
 
         default:

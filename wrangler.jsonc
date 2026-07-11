@@ -12,6 +12,11 @@
       "binding": "DB",
       "database_name": "db_invplan",
       "database_id": "cae42222-2d53-4781-acc3-3f401497a7c9"
+    },
+    {
+      "binding": "DB_SANDBOX",
+      "database_name": "db_invplan_sandbox",
+      "database_id": "ec3d816d-d422-4e0e-848a-739f2f4e7eab"
     }
   ],
   "triggers": {
